@@ -1,92 +1,59 @@
-"""
-场景三：Memory（对话记忆）
+"""Memory（对话记忆）
 
 演示内容：
-1. ConversationBufferMemory（完整记忆）
-2. ConversationSummaryMemory（摘要记忆）
+1. InMemoryChatMessageHistory（消息历史）
+2. LCEL 方式管理记忆
 3. 多轮对话实现
 
-运行：python demos/03_memory.py
+运行：uv run python demos/03_memory.py
 """
+import os
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
-from langchain.memory import ConversationBufferMemory, ConversationSummaryMemory
-from langchain.chains import ConversationChain
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.chat_history import InMemoryChatMessageHistory
-from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 
 load_dotenv()
 
 
-def demo_buffer_memory():
-    """演示：ConversationBufferMemory（完整记忆）"""
-    print("=" * 50)
-    print("1. ConversationBufferMemory（完整记忆）")
-    print("=" * 50)
-    
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7)
-    
-    # 创建带记忆的对话链
-    memory = ConversationBufferMemory()
-    conversation = ConversationChain(llm=llm, memory=memory, verbose=True)
-    
-    # 第一轮对话
-    print("用户: 你好，我叫小明")
-    response1 = conversation.predict(input="你好，我叫小明")
-    print(f"AI: {response1}\n")
-    
-    # 第二轮对话
-    print("用户: 你还记得我叫什么吗？")
-    response2 = conversation.predict(input="你还记得我叫什么吗？")
-    print(f"AI: {response2}\n")
-    
-    # 查看记忆内容
-    print("记忆内容:")
-    print(memory.load_memory_variables({}))
-    print()
+def get_llm(temperature=0.7):
+    """获取 DeepSeek LLM 实例"""
+    return ChatOpenAI(
+        model="deepseek-chat",
+        openai_api_base="https://api.deepseek.com/v1",
+        openai_api_key=os.getenv("DEEPSEEK_API_KEY"),
+        temperature=temperature
+    )
 
 
-def demo_summary_memory():
-    """演示：ConversationSummaryMemory（摘要记忆）"""
+def demo_chat_history():
+    """演示：对话历史管理"""
     print("=" * 50)
-    print("2. ConversationSummaryMemory（摘要记忆）")
+    print("1. InMemoryChatMessageHistory")
     print("=" * 50)
     
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+    history = InMemoryChatMessageHistory()
     
-    # 创建摘要记忆（适合长对话，节省 token）
-    memory = ConversationSummaryMemory(llm=llm)
+    # 添加消息
+    history.add_user_message("你好，我叫小明")
+    history.add_ai_message("你好小明！很高兴认识你！")
     
-    # 模拟多轮对话
-    conversation = ConversationChain(llm=llm, memory=memory, verbose=False)
-    
-    # 添加多轮对话
-    conversation.predict(input="你好，我叫小明，是一名 Python 开发者")
-    conversation.predict(input="我最近在学习 LangChain")
-    conversation.predict(input="我对 Agent 特别感兴趣")
-    
-    # 查看摘要
-    print("对话摘要:")
-    print(memory.load_memory_variables({}))
-    print()
-    print("💡 优点: 适合长对话，自动总结历史，节省 token")
+    print("对话历史:")
+    for msg in history.messages:
+        role = "用户" if msg.type == "human" else "AI"
+        print(f"  [{role}] {msg.content}")
     print()
 
 
 def demo_memory_with_lcel():
     """演示：使用 LCEL 管理记忆"""
     print("=" * 50)
-    print("3. 使用 LCEL（推荐方式）")
+    print("2. 使用 LCEL 管理记忆（推荐）")
     print("=" * 50)
     
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7)
-    
-    # 创建聊天历史存储
+    llm = get_llm()
     history = InMemoryChatMessageHistory()
     
-    # 定义带记忆的链
     prompt = ChatPromptTemplate.from_messages([
         ("system", "你是一个有帮助的助手。"),
         MessagesPlaceholder(variable_name="history"),
@@ -95,24 +62,15 @@ def demo_memory_with_lcel():
     
     chain = prompt | llm
     
-    # 对话函数
     def chat(input_text: str) -> str:
-        # 获取历史
-        history_messages = history.messages.copy()
-        
-        # 调用 LLM
         response = chain.invoke({
-            "history": history_messages,
+            "history": history.messages,
             "input": input_text
         })
-        
-        # 保存到历史
         history.add_user_message(input_text)
         history.add_ai_message(response.content)
-        
         return response.content
     
-    # 测试多轮对话
     print("用户: 你好，我叫小红")
     print(f"AI: {chat('你好，我叫小红')}\n")
     
@@ -122,36 +80,46 @@ def demo_memory_with_lcel():
     print("用户: 我叫什么名字？")
     print(f"AI: {chat('我叫什么名字？')}\n")
     
-    # 查看历史
     print("对话历史:")
     for msg in history.messages:
         role = "用户" if msg.type == "human" else "AI"
-        print(f"  [{role}] {msg.content}")
+        print(f"  [{role}] {msg.content[:50]}...")
     print()
 
 
-def demo_memory_comparison():
-    """演示：不同记忆类型的对比"""
+def demo_multi_turn():
+    """演示：完整多轮对话"""
     print("=" * 50)
-    print("4. Memory 类型对比")
+    print("3. 完整多轮对话示例")
     print("=" * 50)
     
-    print("""
-┌─────────────────────┬─────────────────────┬─────────────────────┐
-│ Memory 类型          │ 特点                │ 适用场景            │
-├─────────────────────┼─────────────────────┼─────────────────────┤
-│ BufferMemory        │ 完整记忆所有对话    │ 短对话、需要精确回顾│
-│ SummaryMemory       │ 自动总结对话要点    │ 长对话、节省 token │
-│ BufferWindowMemory  │ 只保留最近 N 轮     │ 上下文有限制时      │
-│ VectorStoreMemory   │ 向量化存储，可检索  │ 超长对话历史        │
-└─────────────────────┴─────────────────────┴─────────────────────┘
-
-💡 选择建议：
-   - 简单聊天：BufferMemory
-   - 长对话：SummaryMemory
-   - 有限上下文：BufferWindowMemory
-   - 需要检索历史：VectorStoreMemory
-    """)
+    llm = get_llm()
+    history = InMemoryChatMessageHistory()
+    
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", "你是一个 Python 专家，回答简洁专业。"),
+        MessagesPlaceholder(variable_name="history"),
+        ("human", "{input}")
+    ])
+    
+    chain = prompt | llm
+    
+    questions = [
+        "什么是装饰器？",
+        "能举个例子吗？",
+        "装饰器有什么应用场景？"
+    ]
+    
+    for q in questions:
+        response = chain.invoke({
+            "history": history.messages,
+            "input": q
+        })
+        history.add_user_message(q)
+        history.add_ai_message(response.content)
+        
+        print(f"用户: {q}")
+        print(f"AI: {response.content[:100]}...\n")
 
 
 def main():
@@ -159,17 +127,30 @@ def main():
     print("LangChain 入门：Memory（对话记忆）")
     print("=" * 50 + "\n")
     
-    # 完整记忆
-    demo_buffer_memory()
+    if not os.getenv("DEEPSEEK_API_KEY"):
+        print("❌ 错误：请设置 DEEPSEEK_API_KEY 环境变量")
+        return
     
-    # 摘要记忆
-    demo_summary_memory()
-    
-    # LCEL 方式
+    demo_chat_history()
     demo_memory_with_lcel()
+    demo_multi_turn()
     
-    # 对比
-    demo_memory_comparison()
+    print("""
+Memory 类型说明：
+
+┌─────────────────────┬─────────────────────┬─────────────────────┐
+│ Memory 类型          │ 特点                │ 适用场景            │
+├─────────────────────┼─────────────────────┼─────────────────────┤
+│ InMemoryHistory     │ 内存存储，简单      │ 简单对话、演示      │
+│ Redis History       │ 持久化存储          │ 生产环境、多实例    │
+│ File History        │ 文件存储            │ 单机持久化          │
+└─────────────────────┴─────────────────────┴─────────────────────┘
+
+💡 最佳实践：
+   - 使用 MessagesPlaceholder 在 Prompt 中预留历史位置
+   - 每次对话后更新历史记录
+   - 生产环境使用 Redis 等持久化存储
+""")
     
     print("=" * 50)
     print("✅ 场景三演示完成")

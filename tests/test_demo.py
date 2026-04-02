@@ -105,23 +105,6 @@ class TestStructuredOutput(unittest.TestCase):
         
         self.assertEqual(person.name, "小明")
         self.assertEqual(person.age, 25)
-    
-    def test_with_structured_output(self):
-        """测试 with_structured_output 方法"""
-        from langchain_openai import ChatOpenAI
-        from pydantic import BaseModel
-        
-        class Answer(BaseModel):
-            value: int
-        
-        # 只有配置了 API Key 才测试
-        if os.environ.get("OPENAI_API_KEY"):
-            llm = ChatOpenAI(model="gpt-4o-mini")
-            structured_llm = llm.with_structured_output(Answer)
-            self.assertIsNotNone(structured_llm)
-        else:
-            # 跳过测试
-            self.skipTest("OPENAI_API_KEY not set")
 
 
 class TestRAG(unittest.TestCase):

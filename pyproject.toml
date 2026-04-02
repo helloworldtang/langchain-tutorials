@@ -1,0 +1,26 @@
+[project]
+name = "langchain-tutorials"
+version = "1.0.0"
+description = "LangChain 入门教程：8 个核心场景的完整示例"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "langchain>=0.3.0",
+    "langchain-openai>=0.2.0",
+    "langchain-community>=0.3.0",
+    "langchain-core>=0.3.0",
+    "langchain-text-splitters>=1.1.0",
+    "faiss-cpu>=1.7.4",
+    "pydantic>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "langgraph>=0.2.0",
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["demos"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

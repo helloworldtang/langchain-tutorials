@@ -1,20 +1,29 @@
-"""
-场景六：Agent（智能体）
+"""Agent（智能体）
 
 演示内容：
 1. ReAct Agent（推理+行动）
 2. Agent 执行过程
 3. 自定义工具
 
-运行：python demos/06_agent.py
+运行：uv run python demos/06_agent.py
 """
+import os
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
-from langchain.tools import tool
-from langchain.agents import create_tool_calling_agent, AgentExecutor
+from langchain_core.tools import tool
 from langchain_core.prompts import ChatPromptTemplate
 
 load_dotenv()
+
+
+def get_llm(temperature=0):
+    """获取 DeepSeek LLM 实例"""
+    return ChatOpenAI(
+        model="deepseek-chat",
+        openai_api_base="https://api.deepseek.com/v1",
+        openai_api_key=os.getenv("DEEPSEEK_API_KEY"),
+        temperature=temperature
+    )
 
 
 # ===== 定义工具 =====
@@ -56,153 +65,72 @@ def calculate(expression: str) -> str:
 
 # ===== 演示函数 =====
 
-def demo_basic_agent():
-    """演示：基本 Agent"""
+def demo_bind_tools():
+    """演示：绑定工具到 LLM"""
     print("=" * 50)
-    print("1. 基本 Agent")
+    print("1. 绑定工具到 LLM")
     print("=" * 50)
     
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
-    tools = [get_weather, search, calculate]
+    llm = get_llm()
+    tools = [get_weather, calculate]
+    llm_with_tools = llm.bind_tools(tools)
     
-    # 创建 Prompt
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", "你是一个有用的助手，可以使用工具回答问题。"),
-        ("human", "{input}"),
-        ("placeholder", "{agent_scratchpad}"),
-    ])
+    response = llm_with_tools.invoke("北京今天天气怎么样？")
     
-    # 创建 Agent
-    agent = create_tool_calling_agent(llm, tools, prompt)
-    agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
-    
-    # 执行
-    result = agent_executor.invoke({"input": "北京今天天气怎么样？"})
-    print(f"\n最终答案: {result['output']}\n")
+    print(f"回复内容: {response.content[:100]}...")
+    print(f"工具调用: {response.tool_calls}")
+    print()
 
 
 def demo_multi_tool():
     """演示：多工具调用"""
     print("=" * 50)
-    print("2. 多工具调用")
+    print("2. 多工具调用分析")
     print("=" * 50)
     
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+    llm = get_llm()
     tools = [get_weather, calculate]
+    llm_with_tools = llm.bind_tools(tools)
     
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", "你是一个有用的助手，可以使用工具回答问题。"),
-        ("human", "{input}"),
-        ("placeholder", "{agent_scratchpad}"),
-    ])
+    response = llm_with_tools.invoke("北京今天天气怎么样？顺便帮我算一下 25 * 4")
     
-    agent = create_tool_calling_agent(llm, tools, prompt)
-    agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
-    
-    # 这个问题需要调用多个工具
-    result = agent_executor.invoke({
-        "input": "北京今天天气怎么样？顺便帮我算一下 25 * 4"
-    })
-    print(f"\n最终答案: {result['output']}\n")
+    print(f"工具调用数量: {len(response.tool_calls) if response.tool_calls else 0}")
+    if response.tool_calls:
+        for tc in response.tool_calls:
+            print(f"  - {tc['name']}: {tc['args']}")
+    print()
 
 
-def demo_agent_with_memory():
-    """演示：带记忆的 Agent"""
+def demo_tool_definition():
+    """演示：工具定义"""
     print("=" * 50)
-    print("3. 带记忆的 Agent")
-    print("=" * 50)
-    
-    from langchain.memory import ConversationBufferMemory
-    
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
-    tools = [get_weather, search]
-    
-    # 创建记忆
-    memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
-    
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", "你是一个有用的助手，可以使用工具回答问题。"),
-        MessagesPlaceholder(variable_name="chat_history"),
-        ("human", "{input}"),
-        ("placeholder", "{agent_scratchpad}"),
-    ])
-    
-    agent = create_tool_calling_agent(llm, tools, prompt)
-    agent_executor = AgentExecutor(
-        agent=agent, 
-        tools=tools, 
-        memory=memory,
-        verbose=True
-    )
-    
-    # 第一轮
-    print("用户: 我叫小明")
-    result1 = agent_executor.invoke({"input": "我叫小明"})
-    print(f"AI: {result1['output']}\n")
-    
-    # 第二轮
-    print("用户: 我叫什么名字？")
-    result2 = agent_executor.invoke({"input": "我叫什么名字？"})
-    print(f"AI: {result2['output']}\n")
-
-
-def demo_error_handling():
-    """演示：错误处理"""
-    print("=" * 50)
-    print("4. 错误处理")
+    print("3. 工具定义示例")
     print("=" * 50)
     
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
-    tools = [get_weather]
-    
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", "你是一个有用的助手。"),
-        ("human", "{input}"),
-        ("placeholder", "{agent_scratchpad}"),
-    ])
-    
-    agent = create_tool_calling_agent(llm, tools, prompt)
-    agent_executor = AgentExecutor(
-        agent=agent, 
-        tools=tools,
-        max_iterations=3,           # 最大迭代次数
-        handle_parsing_errors=True  # 处理解析错误
-    )
-    
-    result = agent_executor.invoke({"input": "你好"})
-    print(f"答案: {result['output']}\n")
-
-
-def demo_agent_configuration():
-    """演示：Agent 配置项"""
-    print("=" * 50)
-    print("5. Agent 配置项")
-    print("=" * 50)
-    
+    print("定义工具：")
     print("""
-AgentExecutor 关键配置：
-
-┌─────────────────────┬─────────────────────────────────────┐
-│ 参数                │ 说明                                │
-├─────────────────────┼─────────────────────────────────────┤
-│ max_iterations      │ 最大迭代次数（防止死循环）          │
-│ max_execution_time  │ 最大执行时间（秒）                  │
-│ early_stopping_     │ 超时后的行为：generate/force        │
-│ method              │                                     │
-│ handle_parsing_     │ 是否处理解析错误                    │
-│ errors              │                                     │
-│ verbose             │ 是否打印执行过程                    │
-└─────────────────────┴─────────────────────────────────────┘
-
-💡 最佳实践：
-   - 设置 max_iterations=5（防止无限循环）
-   - 设置 handle_parsing_errors=True（更健壮）
-   - 生产环境关闭 verbose=True
+@tool
+def get_weather(city: str) -> str:
+    \"\"\"查询城市天气\"\"\"
+    weather_data = {
+        "北京": "晴天，15°C",
+        "上海": "多云，18°C",
+    }
+    return weather_data.get(city, f"{city}：暂无数据")
 """)
-
-
-# 修复导入
-from langchain_core.prompts import MessagesPlaceholder
+    
+    print("绑定工具：")
+    print("""
+llm = ChatOpenAI(model="deepseek-chat", ...)
+tools = [get_weather, calculate]
+llm_with_tools = llm.bind_tools(tools)
+""")
+    
+    print("💡 关键点：")
+    print("  1. 工具描述决定了 LLM 何时调用")
+    print("  2. 参数类型提示帮助 LLM 生成正确参数")
+    print("  3. 工具数量建议控制在 10 个以内")
+    print()
 
 
 def main():
@@ -210,17 +138,37 @@ def main():
     print("LangChain 入门：Agent（智能体）")
     print("=" * 50 + "\n")
     
-    # 基本 Agent
-    demo_basic_agent()
+    if not os.getenv("DEEPSEEK_API_KEY"):
+        print("❌ 错误：请设置 DEEPSEEK_API_KEY 环境变量")
+        return
     
-    # 多工具
+    demo_bind_tools()
     demo_multi_tool()
+    demo_tool_definition()
     
-    # 错误处理
-    demo_error_handling()
-    
-    # 配置项
-    demo_agent_configuration()
+    print("""
+Agent 核心概念：
+
+┌─────────────────────────────────────────────────────────────┐
+│                    Agent 工作流程                            │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│   用户问题："北京天气怎么样？"                               │
+│         ↓                                                   │
+│   LLM 分析：需要调用天气工具                                 │
+│         ↓                                                   │
+│   返回工具调用：get_weather(city="北京")                    │
+│         ↓                                                   │
+│   执行工具，返回结果                                         │
+│         ↓                                                   │
+│   LLM 整理答案："北京今天晴天，15°C"                        │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+
+💡 Agent vs Function Call：
+   - Function Call：手动处理工具调用
+   - Agent：自动决策、自动调用、自动整理答案
+""")
     
     print("=" * 50)
     print("✅ 场景六演示完成")
