@@ -15,18 +15,9 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
 from typing import List
+from helpers import get_llm
 
 load_dotenv()
-
-
-def get_llm(temperature=0):
-    """获取 DeepSeek LLM 实例"""
-    return ChatOpenAI(
-        model="deepseek-chat",
-        openai_api_base="https://api.deepseek.com/v1",
-        openai_api_key=os.getenv("DEEPSEEK_API_KEY"),
-        temperature=temperature
-    )
 
 
 # ===== 定义数据模型 =====
@@ -59,28 +50,28 @@ class StockAnalysis(BaseModel):
 
 # ===== 演示函数 =====
 
-def demo_pydantic_parser():
+def demo_pydantic_parser() -> None:
     """演示：PydanticOutputParser"""
     print("=" * 50)
     print("1. PydanticOutputParser（结构化输出）")
     print("=" * 50)
-    
+
     llm = get_llm()
     parser = PydanticOutputParser(pydantic_object=PersonInfo)
-    
+
     prompt = ChatPromptTemplate.from_messages([
         ("system", "你是一个有用的助手。{format_instructions}"),
         ("human", "{query}")
     ])
-    
+
     chain = prompt | llm | parser
-    
+
     query = "请告诉我关于马斯克的信息"
     result = chain.invoke({
         "query": query,
         "format_instructions": parser.get_format_instructions()
     })
-    
+
     print(f"查询: {query}")
     print(f"结果类型: {type(result)}")
     print(f"姓名: {result.name}")
@@ -90,28 +81,28 @@ def demo_pydantic_parser():
     print()
 
 
-def demo_product_info():
+def demo_product_info() -> None:
     """演示：商品信息提取"""
     print("=" * 50)
     print("2. 商品信息提取")
     print("=" * 50)
-    
+
     llm = get_llm()
     parser = PydanticOutputParser(pydantic_object=ProductInfo)
-    
+
     prompt = ChatPromptTemplate.from_template("""
 {format_instructions}
 
 请分析以下产品：{product}
 """)
-    
+
     chain = prompt | llm | parser
-    
+
     result = chain.invoke({
         "product": "iPhone 15",
         "format_instructions": parser.get_format_instructions()
     })
-    
+
     print(f"商品名: {result.name}")
     print(f"价格: {result.price}")
     print(f"分类: {result.category}")
@@ -119,15 +110,15 @@ def demo_product_info():
     print()
 
 
-def demo_stock_analysis():
+def demo_stock_analysis() -> None:
     """演示：股票分析"""
     print("=" * 50)
     print("3. 股票分析（复杂数据结构）")
     print("=" * 50)
-    
+
     llm = get_llm()
     parser = PydanticOutputParser(pydantic_object=StockAnalysis)
-    
+
     prompt = ChatPromptTemplate.from_template("""
 你是一位专业的股票分析师。
 
@@ -135,14 +126,14 @@ def demo_stock_analysis():
 
 请分析以下股票：{symbol}
 """)
-    
+
     chain = prompt | llm | parser
-    
+
     result = chain.invoke({
         "symbol": "茅台（600519）",
         "format_instructions": parser.get_format_instructions()
     })
-    
+
     print(f"股票代码: {result.symbol}")
     print(f"公司名称: {result.company_name}")
     print(f"当前价格: {result.current_price}")
@@ -152,33 +143,33 @@ def demo_stock_analysis():
     print()
 
 
-def demo_list_output():
+def demo_list_output() -> None:
     """演示：列表输出"""
     print("=" * 50)
     print("4. 列表输出")
     print("=" * 50)
-    
+
     class TodoList(BaseModel):
         """待办事项列表"""
         date: str = Field(description="日期")
         items: List[str] = Field(description="待办事项")
         priority: str = Field(description="优先级描述")
-    
+
     llm = get_llm()
     parser = PydanticOutputParser(pydantic_object=TodoList)
-    
+
     prompt = ChatPromptTemplate.from_template("""
 {format_instructions}
 
 帮我列一个程序员明天的待办事项
 """)
-    
+
     chain = prompt | llm | parser
-    
+
     result = chain.invoke({
         "format_instructions": parser.get_format_instructions()
     })
-    
+
     print(f"日期: {result.date}")
     print(f"优先级: {result.priority}")
     print("待办事项:")
@@ -187,52 +178,46 @@ def demo_list_output():
     print()
 
 
-def demo_json_output():
+def demo_json_output() -> None:
     """演示：JSON 格式说明"""
     print("=" * 50)
     print("5. 格式说明示例")
     print("=" * 50)
-    
+
     parser = PydanticOutputParser(pydantic_object=PersonInfo)
-    
+
     print("PydanticOutputParser 会生成以下格式说明：\n")
     print(parser.get_format_instructions())
     print()
 
 
-def main():
+def main() -> None:
     print("\n" + "=" * 50)
     print("LangChain 入门：结构化输出")
     print("=" * 50 + "\n")
-    
+
     if not os.getenv("DEEPSEEK_API_KEY"):
-        print("❌ 错误：请设置 DEEPSEEK_API_KEY 环境变量")
+        print("错误：请设置 DEEPSEEK_API_KEY 环境变量")
         return
-    
+
     demo_pydantic_parser()
     demo_product_info()
     demo_stock_analysis()
     demo_list_output()
-    
+
     print("""
 Pydantic 模型定义要点：
 
-┌─────────────────────────────────────────────────────────────┐
-│  class ProductInfo(BaseModel):                              │
-│      name: str = Field(description="商品名称")              │
-│      price: float = Field(description="价格")               │
-│      features: List[str] = Field(description="特点列表")    │
-└─────────────────────────────────────────────────────────────┘
-
-💡 关键点：
-1. 继承 BaseModel
-2. 使用 Field 添加描述（LLM 会根据描述生成内容）
-3. 支持基本类型：str、int、float、bool
-4. 支持复杂类型：List、Optional、嵌套模型
++-------------------------------------------------------------+
+|  class ProductInfo(BaseModel):                              |
+|      name: str = Field(description="商品名称")              |
+|      price: float = Field(description="价格")               |
+|      features: List[str] = Field(description="特点列表")    |
++-------------------------------------------------------------+
 """)
-    
+
     print("=" * 50)
-    print("✅ 场景五演示完成")
+    print("场景五演示完成")
     print("=" * 50)
 
 

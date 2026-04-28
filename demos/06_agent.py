@@ -12,18 +12,9 @@ from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.tools import tool
 from langchain_core.prompts import ChatPromptTemplate
+from helpers import get_llm, safe_calculate
 
 load_dotenv()
-
-
-def get_llm(temperature=0):
-    """获取 DeepSeek LLM 实例"""
-    return ChatOpenAI(
-        model="deepseek-chat",
-        openai_api_base="https://api.deepseek.com/v1",
-        openai_api_key=os.getenv("DEEPSEEK_API_KEY"),
-        temperature=temperature
-    )
 
 
 # ===== 定义工具 =====
@@ -56,122 +47,102 @@ def search(query: str) -> str:
 @tool
 def calculate(expression: str) -> str:
     """计算数学表达式"""
-    try:
-        result = eval(expression)
-        return f"计算结果: {result}"
-    except:
-        return "计算错误"
+    return safe_calculate(expression)
 
 
 # ===== 演示函数 =====
 
-def demo_bind_tools():
+def demo_bind_tools() -> None:
     """演示：绑定工具到 LLM"""
     print("=" * 50)
     print("1. 绑定工具到 LLM")
     print("=" * 50)
-    
-    llm = get_llm()
-    tools = [get_weather, calculate]
-    llm_with_tools = llm.bind_tools(tools)
-    
-    response = llm_with_tools.invoke("北京今天天气怎么样？")
-    
-    print(f"回复内容: {response.content[:100]}...")
-    print(f"工具调用: {response.tool_calls}")
-    print()
 
-
-def demo_multi_tool():
-    """演示：多工具调用"""
-    print("=" * 50)
-    print("2. 多工具调用分析")
-    print("=" * 50)
-    
     llm = get_llm()
-    tools = [get_weather, calculate]
+    tools = [get_weather, calculate, search]
     llm_with_tools = llm.bind_tools(tools)
-    
-    response = llm_with_tools.invoke("北京今天天气怎么样？顺便帮我算一下 25 * 4")
-    
-    print(f"工具调用数量: {len(response.tool_calls) if response.tool_calls else 0}")
+
+    response = llm_with_tools.invoke("北京天气如何？")
+
     if response.tool_calls:
-        for tc in response.tool_calls:
-            print(f"  - {tc['name']}: {tc['args']}")
+        tool_call = response.tool_calls[0]
+        print(f"调用工具: {tool_call['name']}")
+        print(f"参数: {tool_call['args']}")
+
+        for t in tools:
+            if t.name == tool_call["name"]:
+                result = t.invoke(tool_call["args"])
+                print(f"结果: {result}")
+    else:
+        print(f"LLM 直接回答: {response.content}")
     print()
 
 
-def demo_tool_definition():
-    """演示：工具定义"""
+def demo_multi_tool() -> None:
+    """演示：多工具协作"""
     print("=" * 50)
-    print("3. 工具定义示例")
+    print("2. 多工具协作")
     print("=" * 50)
-    
-    print("定义工具：")
-    print("""
-@tool
-def get_weather(city: str) -> str:
-    \"\"\"查询城市天气\"\"\"
-    weather_data = {
-        "北京": "晴天，15°C",
-        "上海": "多云，18°C",
-    }
-    return weather_data.get(city, f"{city}：暂无数据")
-""")
-    
-    print("绑定工具：")
-    print("""
-llm = ChatOpenAI(model="deepseek-chat", ...)
-tools = [get_weather, calculate]
-llm_with_tools = llm.bind_tools(tools)
-""")
-    
-    print("💡 关键点：")
-    print("  1. 工具描述决定了 LLM 何时调用")
-    print("  2. 参数类型提示帮助 LLM 生成正确参数")
-    print("  3. 工具数量建议控制在 10 个以内")
+
+    llm = get_llm()
+    tools = [get_weather, calculate, search]
+    llm_with_tools = llm.bind_tools(tools)
+
+    queries = [
+        "北京的天气怎么样？",
+        "计算 25 * 4 + 10",
+        "什么是 LangChain？",
+    ]
+
+    for query in queries:
+        print(f"\n查询: {query}")
+        response = llm_with_tools.invoke(query)
+
+        if response.tool_calls:
+            for tool_call in response.tool_calls:
+                for t in tools:
+                    if t.name == tool_call["name"]:
+                        result = t.invoke(tool_call["args"])
+                        print(f"  -> {result}")
+        else:
+            print(f"  -> {response.content[:100]}")
     print()
 
 
-def main():
+def demo_tool_definition() -> None:
+    """演示：工具定义的重要性"""
+    print("=" * 50)
+    print("3. 工具定义的重要性")
+    print("=" * 50)
+
+    print("\n工具列表：")
+    for t in [get_weather, search, calculate]:
+        print(f"  - {t.name}: {t.description}")
+    print()
+
+    print("Agent 选择工具的逻辑：")
+    print("  1. 用户输入 -> LLM 分析意图")
+    print("  2. LLM 根据工具描述选择合适工具")
+    print("  3. 生成工具调用参数")
+    print("  4. 执行工具并返回结果")
+    print()
+
+
+def main() -> None:
     print("\n" + "=" * 50)
     print("LangChain 入门：Agent（智能体）")
     print("=" * 50 + "\n")
-    
+
     if not os.getenv("DEEPSEEK_API_KEY"):
-        print("❌ 错误：请设置 DEEPSEEK_API_KEY 环境变量")
+        print("错误：请设置 DEEPSEEK_API_KEY 环境变量")
         return
-    
+
     demo_bind_tools()
     demo_multi_tool()
     demo_tool_definition()
-    
-    print("""
-Agent 核心概念：
 
-┌─────────────────────────────────────────────────────────────┐
-│                    Agent 工作流程                            │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│   用户问题："北京天气怎么样？"                               │
-│         ↓                                                   │
-│   LLM 分析：需要调用天气工具                                 │
-│         ↓                                                   │
-│   返回工具调用：get_weather(city="北京")                    │
-│         ↓                                                   │
-│   执行工具，返回结果                                         │
-│         ↓                                                   │
-│   LLM 整理答案："北京今天晴天，15°C"                        │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-
-💡 Agent vs Function Call：
-   - Function Call：手动处理工具调用
-   - Agent：自动决策、自动调用、自动整理答案
-""")
-    
     print("=" * 50)
-    print("✅ 场景六演示完成")
+    print("场景六演示完成")
     print("=" * 50)
 
 

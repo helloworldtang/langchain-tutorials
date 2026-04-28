@@ -15,28 +15,9 @@ from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
+from helpers import get_llm, get_embeddings
 
 load_dotenv()
-
-
-def get_llm(temperature=0):
-    """获取 DeepSeek LLM 实例"""
-    return ChatOpenAI(
-        model="deepseek-chat",
-        openai_api_base="https://api.deepseek.com/v1",
-        openai_api_key=os.getenv("DEEPSEEK_API_KEY"),
-        temperature=temperature
-    )
-
-
-def get_embeddings():
-    """获取 Embeddings 实例（使用 DeepSeek 兼容的 API）"""
-    # DeepSeek 暂不支持 Embeddings，这里使用 OpenAI
-    # 如果没有 OpenAI Key，可以使用其他本地 Embeddings
-    return OpenAIEmbeddings(
-        model="text-embedding-3-small",
-        openai_api_key=os.getenv("OPENAI_API_KEY")
-    )
 
 
 # 示例文档
@@ -64,60 +45,60 @@ SAMPLE_DOCUMENTS = [
 ]
 
 
-def demo_text_splitting():
+def demo_text_splitting() -> None:
     """演示：文档切分"""
     print("=" * 50)
     print("1. 文档切分")
     print("=" * 50)
-    
+
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=100,
         chunk_overlap=20,
         separators=["\n\n", "\n", "。", "，", " "]
     )
-    
+
     text = SAMPLE_DOCUMENTS[0]
     chunks = text_splitter.split_text(text)
-    
+
     print(f"原文长度: {len(text)} 字符")
     print(f"切分后: {len(chunks)} 块\n")
-    
+
     for i, chunk in enumerate(chunks):
         print(f"块 {i+1}: {chunk[:50]}...")
     print()
 
 
-def demo_rag_pipeline():
+def demo_rag_pipeline() -> None:
     """演示：完整的 RAG 流程"""
     print("=" * 50)
     print("2. 完整 RAG 流程")
     print("=" * 50)
-    
+
     # 检查 Embeddings API Key
     if not os.getenv("OPENAI_API_KEY"):
-        print("⚠️  注意：RAG 需要 Embeddings API")
+        print("注意：RAG 需要 Embeddings API")
         print("   请设置 OPENAI_API_KEY 环境变量")
         print("   或者使用本地 Embeddings（如 sentence-transformers）")
         return
-    
+
     # 1. 准备数据
     embeddings = get_embeddings()
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=200, chunk_overlap=50)
-    
+
     documents = []
     for doc in SAMPLE_DOCUMENTS:
         chunks = text_splitter.split_text(doc)
         for chunk in chunks:
             documents.append(Document(page_content=chunk))
-    
+
     # 2. 创建向量数据库
     print(f"创建向量数据库，共 {len(documents)} 个文档块...")
     vectorstore = FAISS.from_documents(documents, embeddings)
     retriever = vectorstore.as_retriever(search_kwargs={"k": 2})
-    
+
     # 3. 创建 LLM
     llm = get_llm()
-    
+
     # 4. 创建 RAG Prompt
     prompt = ChatPromptTemplate.from_template("""
 根据以下上下文回答问题。如果上下文中没有相关信息，请说"我不知道"。
@@ -129,42 +110,42 @@ def demo_rag_pipeline():
 
 回答：
 """)
-    
+
     # 5. 构建 RAG 链
     def format_docs(docs):
         return "\n\n".join(doc.page_content for doc in docs)
-    
+
     rag_chain = (
         {"context": retriever | RunnableLambda(format_docs), "question": RunnablePassthrough()}
         | prompt
         | llm
     )
-    
+
     # 6. 测试
     questions = [
         "什么是 RAG？",
         "LangChain 有哪些核心组件？",
     ]
-    
+
     for question in questions:
         print(f"问题: {question}")
         response = rag_chain.invoke(question)
         print(f"回答: {response.content}\n")
 
 
-def demo_rag_with_sources():
+def demo_rag_with_sources() -> None:
     """演示：带来源引用的 RAG"""
     print("=" * 50)
     print("3. 带来源引用的 RAG")
     print("=" * 50)
-    
+
     if not os.getenv("OPENAI_API_KEY"):
-        print("⚠️  需要 OPENAI_API_KEY 来生成 Embeddings")
+        print("需要 OPENAI_API_KEY 来生成 Embeddings")
         return
-    
+
     embeddings = get_embeddings()
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=200, chunk_overlap=50)
-    
+
     documents = []
     for i, doc in enumerate(SAMPLE_DOCUMENTS):
         chunks = text_splitter.split_text(doc)
@@ -173,37 +154,37 @@ def demo_rag_with_sources():
                 page_content=chunk,
                 metadata={"source": f"文档{i+1}"}
             ))
-    
+
     vectorstore = FAISS.from_documents(documents, embeddings)
     retriever = vectorstore.as_retriever(search_kwargs={"k": 2})
-    
+
     query = "RAG 有什么作用？"
     docs = retriever.invoke(query)
-    
+
     print(f"问题: {query}")
     print(f"\n找到 {len(docs)} 个相关文档:\n")
-    
+
     for i, doc in enumerate(docs):
         print(f"来源: {doc.metadata.get('source', '未知')}")
         print(f"内容: {doc.page_content[:100]}...")
         print()
 
 
-def main():
+def main() -> None:
     print("\n" + "=" * 50)
     print("LangChain 入门：RAG（检索增强生成）")
     print("=" * 50 + "\n")
-    
+
     if not os.getenv("DEEPSEEK_API_KEY"):
-        print("❌ 错误：请设置 DEEPSEEK_API_KEY 环境变量")
+        print("错误：请设置 DEEPSEEK_API_KEY 环境变量")
         return
-    
+
     demo_text_splitting()
     demo_rag_pipeline()
     demo_rag_with_sources()
-    
+
     print("=" * 50)
-    print("✅ 场景四演示完成")
+    print("场景四演示完成")
     print("=" * 50)
 
 
