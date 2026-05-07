@@ -138,7 +138,7 @@ class MessageBus:
         try:
             self.queues[message.receiver].put(message, timeout=timeout)
             return True
-        except:
+        except Exception:
             return False
 
     def receive(self, agent_id: str, timeout: Optional[float] = None) -> Optional[AgentMessage]:
@@ -251,7 +251,7 @@ def parse_json_response(text: str, default: Dict) -> Dict:
         json_match = re.search(r'\{[\s\S]*\}', text)
         if json_match:
             return json.loads(json_match.group())
-    except:
+    except Exception:
         pass
     return default
 
